@@ -1,0 +1,101 @@
+# GlitchTip — self-hosted Sentry-compatible error tracker для Jazu.
+#
+# Зачем отдельный compose-файл, а не подмешать в основной:
+#   1. GlitchTip — необязательная инфраструктура; без него платформа работает.
+#      Все ошибки просто летят в stderr (см. packages/observability — no-op
+#      когда SENTRY_DSN не задан).
+#   2. У GlitchTip свой postgres (нельзя смешивать с `jazu` БД — нагрузка
+#      событий, своя схема, retention) и свой redis.
+#   3. Удобно поднимать/гасить независимо: `pnpm docker:glitchtip:up`.
+#
+# Запуск:
+#   docker compose -f docker-compose.glitchtip.yml up -d
+#   open http://localhost:8000
+#
+# После старта:
+#   1. Зарегистрируйте первого пользователя на http://localhost:8000 —
+#      он автоматически станет superuser (потому что ENABLE_USER_REGISTRATION=true
+#      и БД пустая).
+#   2. Создайте Organization → Project (тип Node.js).
+#   3. Скопируйте DSN и положите в .env корня репо: `SENTRY_DSN=...`.
+#   4. Перезапустите api/jobs/wa-worker:
+#      `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart api jobs wa-worker`.
+
+services:
+  glitchtip-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: glitchtip
+      POSTGRES_DB: glitchtip
+    volumes:
+      - glitchtip_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  glitchtip-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - glitchtip_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  glitchtip:
+    image: glitchtip/glitchtip:v5
+    restart: unless-stopped
+    ports:
+      # 8000 наружу — это UI + DSN endpoint, на который шлют api/jobs/wa-worker
+      # из своих контейнеров через host.docker.internal:8000.
+      # Внутри контейнер слушает на 8080 (uWSGI), маппим на 8000 для удобства.
+      - "8000:8080"
+    environment: &glitchtip_env
+      DATABASE_URL: postgres://glitchtip:glitchtip@glitchtip-postgres:5432/glitchtip
+      VALKEY_URL: redis://glitchtip-redis:6379/0
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-jazu-glitchtip-dev-secret-change-me-32chars}
+      EMAIL_URL: consolemail://
+      DEFAULT_FROM_EMAIL: noreply@glitchtip.local
+      GLITCHTIP_DOMAIN: http://localhost:8000
+      ENABLE_USER_REGISTRATION: "true"
+      ENABLE_ORGANIZATION_CREATION: "true"
+      CSRF_TRUSTED_ORIGINS: "http://localhost:8000"
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+
+  # Отдельный background worker для обработки event'ов (celery). В uwsgi-режиме
+  # web-контейнер только принимает /envelope/, а материализация в issues делается
+  # этим воркером. Без него events приходят (200 на /envelope/), но не появляются
+  # в UI.
+  glitchtip-worker:
+    image: glitchtip/glitchtip:v5
+    restart: unless-stopped
+    command: ["./bin/run-celery.sh"]
+    environment:
+      <<: *glitchtip_env
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-redis:
+        condition: service_healthy
+      glitchtip:
+        condition: service_started
+
+volumes:
+  glitchtip_pgdata:
+  glitchtip_redisdata:

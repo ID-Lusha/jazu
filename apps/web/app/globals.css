@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Base colors — warm white, ink */
+    --background: 0 0% 98%;
+    --foreground: 20 14% 11%;
+
+    /* Cards / surfaces */
+    --card: 0 0% 100%;
+    --card-foreground: 20 14% 11%;
+
+    /* Muted surfaces */
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 20 14% 25%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 20 8% 46%;
+
+    /* Accent — warm sand */
+    --accent: 35 18% 92%;
+    --accent-foreground: 20 14% 11%;
+
+    /* Brand — deep charcoal/indigo */
+    --primary: 222 47% 16%;
+    --primary-foreground: 0 0% 98%;
+
+    /* Brand accent (chat bubbles, links) — soft blue */
+    --brand: 214 84% 60%;
+    --brand-foreground: 0 0% 100%;
+
+    /* Test mode (WhatsApp-like) wallpaper */
+    --test-canvas: 41 28% 92%;
+
+    /* Borders */
+    --border: 0 0% 90%;
+    --ring: 222 47% 16%;
+
+    /* Destructive */
+    --destructive: 0 72% 51%;
+
+    /* Radii */
+    --radius-sm: 0.5rem;
+    --radius: 0.75rem;
+    --radius-lg: 1rem;
+    --radius-xl: 1.25rem;
+    --radius-2xl: 1.5rem;
+
+    color-scheme: light;
+  }
+
+  * {
+    box-sizing: border-box;
+    border-color: hsl(var(--border));
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100%;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.12);
+  }
+}
+
+@layer utilities {
+  .bg-background { background-color: hsl(var(--background)); }
+  .bg-card { background-color: hsl(var(--card)); }
+  .bg-secondary { background-color: hsl(var(--secondary)); }
+  .bg-muted { background-color: hsl(var(--muted)); }
+  .bg-accent { background-color: hsl(var(--accent)); }
+  .bg-foreground { background-color: hsl(var(--foreground)); }
+  .bg-primary { background-color: hsl(var(--primary)); }
+  .bg-destructive { background-color: hsl(var(--destructive)); }
+  .bg-brand { background-color: hsl(var(--brand)); }
+  .bg-brand\/10 { background-color: hsl(var(--brand) / 0.10); }
+  .bg-brand\/15 { background-color: hsl(var(--brand) / 0.15); }
+  .bg-brand\/20 { background-color: hsl(var(--brand) / 0.20); }
+  .text-brand { color: hsl(var(--brand)); }
+  .bg-test-canvas { background-color: hsl(var(--test-canvas)); }
+
+  .text-foreground { color: hsl(var(--foreground)); }
+  .text-muted-foreground { color: hsl(var(--muted-foreground)); }
+  .text-secondary-foreground { color: hsl(var(--secondary-foreground)); }
+  .text-accent-foreground { color: hsl(var(--accent-foreground)); }
+  .text-primary-foreground { color: hsl(var(--primary-foreground)); }
+  .text-background { color: hsl(var(--background)); }
+  .text-card-foreground { color: hsl(var(--card-foreground)); }
+
+  .border-border { border-color: hsl(var(--border)); }
+  .ring-ring { --tw-ring-color: hsl(var(--ring)); }
+  .ring-offset-background { --tw-ring-offset-color: hsl(var(--background)); }
+
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

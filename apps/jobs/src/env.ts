@@ -1,0 +1,38 @@
+import { z } from "zod";
+
+/**
+ * Минимальный env для jobs-worker'а.
+ *
+ * Сервис ходит ТОЛЬКО в БД и Redis — никаких HTTP-эндпойнтов наружу не
+ * поднимает. Поэтому секреты тут самые скудные.
+ *
+ *  - DATABASE_URL — обязательно, общее с api.
+ *  - REDIS_URL    — обязательно, BullMQ без него не поедет.
+ *  - OPENAI_API_KEY — для buildRuntimeTurn (внутри packages/ai).
+ *  - TELEGRAM_BOT_TOKEN — опционально, для уведомлений о лидах.
+ *  - JOBS_CONCURRENCY  — параллельность обработки wa:inbound в одном
+ *                       процессе. Для масштабирования просто запускаем
+ *                       несколько контейнеров вместо подкручивания.
+ */
+
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  REDIS_URL: z.string().min(1, "REDIS_URL is required for jobs worker"),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().optional(),
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  JOBS_CONCURRENCY: z.coerce.number().int().positive().default(10),
+  JOBS_INBOUND_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  /** Порт встроенного Fastify под /healthz и /readyz. */
+  JOBS_HEALTH_PORT: z.coerce.number().int().positive().default(4002),
+  SENTRY_DSN: z.string().url().optional().or(z.literal("").transform(() => undefined)),
+  RELEASE_VERSION: z.string().optional(),
+  /**
+   * Retention в днях для логов: дальше WaMessage и LlmCallLog старше N дней
+   * удаляются ночью cron-задачей. 0 = выключено.
+   */
+  RETENTION_DAYS: z.coerce.number().int().min(0).default(90)
+});
+
+export const env = schema.parse(process.env);

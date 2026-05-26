@@ -1,0 +1,69 @@
+{
+  "name": "jazu",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @jazu/api --filter @jazu/web --filter @jazu/wa-worker --filter @jazu/jobs dev",
+    "dev:web": "pnpm --filter @jazu/web dev",
+    "dev:api": "pnpm --filter @jazu/api dev",
+    "dev:worker": "pnpm --filter @jazu/wa-worker dev",
+    "dev:jobs": "pnpm --filter @jazu/jobs dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint:staged": "lint-staged",
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "db:up": "docker compose up -d postgres redis",
+    "db:up:full": "docker compose --profile full up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:generate": "pnpm --filter @jazu/db exec prisma generate",
+    "db:migrate": "pnpm --filter @jazu/db exec prisma migrate dev",
+    "db:deploy": "pnpm --filter @jazu/db exec prisma migrate deploy",
+    "db:push": "pnpm --filter @jazu/db exec prisma db push",
+    "db:seed": "pnpm --filter @jazu/db prisma:seed",
+    "db:studio": "pnpm --filter @jazu/db exec prisma studio",
+    "setup": "pnpm install && pnpm db:up && node -e \"setTimeout(()=>process.exit(0),3000)\" && pnpm db:deploy && pnpm db:generate",
+    "docker:dev:up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env up -d --build",
+    "docker:dev:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env down",
+    "docker:dev:logs": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env logs -f --tail=100",
+    "docker:dev:migrate": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env exec api sh -c 'cd /app/packages/db && pnpm exec prisma migrate deploy'",
+    "docker:dev:reset": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env down -v",
+    "docker:prod:build": "docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env build",
+    "docker:prod:up": "docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d",
+    "docker:prod:down": "docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env down",
+    "docker:prod:logs": "docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env logs -f --tail=100",
+    "docker:prod:migrate": "docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env exec api sh -c 'cd /app/packages/db && node_modules/.bin/prisma migrate deploy'",
+    "docker:prod:psql": "docker compose -f docker-compose.yml --env-file .env exec postgres psql -U $(grep ^POSTGRES_USER .env | cut -d= -f2) -d $(grep ^POSTGRES_DB .env | cut -d= -f2)",
+    "docker:glitchtip:up": "docker compose -f docker-compose.glitchtip.yml up -d",
+    "docker:glitchtip:down": "docker compose -f docker-compose.glitchtip.yml down",
+    "docker:glitchtip:logs": "docker compose -f docker-compose.glitchtip.yml logs -f --tail=100 glitchtip"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix"
+    ],
+    "*.{js,mjs,json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "^16.2.6",
+    "@types/node": "25.9.1",
+    "eslint": "10.4.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "lint-staged": "^17.0.5",
+    "prettier": "3.8.3",
+    "tsx": "4.22.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.59.4",
+    "vitest": "^4.1.7"
+  }
+}

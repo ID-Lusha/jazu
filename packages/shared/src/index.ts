@@ -1,0 +1,108 @@
+import { z } from "zod";
+
+export const actionButtonSchema = z.object({
+  type: z.enum(["switch_to_test", "open_whatsapp", "start_over", "custom"]),
+  label: z.string().min(1),
+  payload: z.record(z.string(), z.unknown()).optional()
+});
+
+export const businessProfileSchema = z.object({
+  businessName: z.string().optional(),
+  niche: z.string().optional(),
+  description: z.string().optional(),
+  offerings: z.array(z.string()).default([]),
+  targetAudience: z.string().optional(),
+  geography: z.string().optional(),
+  languages: z.array(z.string()).default(["ru"]),
+  hours: z.string().optional(),
+  pricingPolicy: z.string().optional(),
+  bookingFlow: z.string().optional(),
+  leadGoal: z.string().optional(),
+  handoffRules: z.string().optional(),
+  tone: z.string().optional(),
+  phonePolicy: z.string().optional(),
+  addressPolicy: z.string().optional(),
+  faq: z.array(z.string()).default([]),
+  examples: z.array(z.string()).default([]),
+  notAllowed: z.array(z.string()).default([]),
+  channels: z.array(z.string()).default(["whatsapp"]),
+  integrations: z.array(z.string()).default([]),
+  emergencyCases: z.array(z.string()).default([]),
+  notes: z.string().optional()
+});
+
+export type BusinessProfile = z.infer<typeof businessProfileSchema>;
+export type ActionButton = z.infer<typeof actionButtonSchema>;
+
+export const promptCardSchema = z.object({
+  kind: z.enum(["update", "edits", "correction"]),
+  changeKind: z.enum(["create", "edit", "correction"]).optional(),
+  prompt: z.string(),
+  addedLines: z.array(z.string()).default([]),
+  removedLines: z.array(z.string()).default([]),
+  changeSummary: z.string().optional(),
+  charCount: z.number().int().nonnegative(),
+  editsCount: z.number().int().nonnegative()
+});
+
+export type PromptCard = z.infer<typeof promptCardSchema>;
+
+export const messagePartSchema = z.object({
+  type: z.string(),
+  text: z.string().optional(),
+  action_button: actionButtonSchema.optional(),
+  prompt_card: promptCardSchema.optional(),
+  stale: z.boolean().optional()
+});
+
+export const chatMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant", "system"]),
+  content: z.string(),
+  parts: z.array(messagePartSchema).default([]),
+  createdAt: z.string().optional()
+});
+
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
+export const leadSummarySchema = z.object({
+  businessName: z.string().optional(),
+  niche: z.string().optional(),
+  summary: z.string(),
+  status: z.enum(["new", "seen", "done"]).default("new"),
+  fields: z.record(z.string(), z.unknown()).default({})
+});
+
+export type LeadSummary = z.infer<typeof leadSummarySchema>;
+
+export const onboardingStepSchema = z.enum([
+  "describe_business",
+  "switch_to_test",
+  "write_client_message",
+  "correct_reply",
+  "connect_whatsapp",
+  "done"
+]);
+
+export type OnboardingStep = z.infer<typeof onboardingStepSchema>;
+
+export const defaultOnboardingSteps: OnboardingStep[] = [
+  "describe_business",
+  "switch_to_test",
+  "write_client_message",
+  "correct_reply",
+  "connect_whatsapp",
+  "done"
+];
+
+export function clampQuestions(questions: string[], max = 3): string[] {
+  return questions.slice(0, max);
+}
+
+export function uniqueStrings(values: Array<string | undefined | null>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())).map((value) => value.trim()))];
+}
+
+export function asJson<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
+  return schema.parse(value);
+}

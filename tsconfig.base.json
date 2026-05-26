@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@jazu/shared": ["packages/shared/src/index.ts"],
+      "@jazu/shared/*": ["packages/shared/src/*"],
+      "@jazu/ai": ["packages/ai/src/index.ts"],
+      "@jazu/ai/*": ["packages/ai/src/*"],
+      "@jazu/db": ["packages/db/src/index.ts"],
+      "@jazu/db/*": ["packages/db/src/*"],
+      "@jazu/queue": ["packages/queue/src/index.ts"],
+      "@jazu/queue/*": ["packages/queue/src/*"],
+      "@jazu/wa-pipeline": ["packages/wa-pipeline/src/index.ts"],
+      "@jazu/wa-pipeline/*": ["packages/wa-pipeline/src/*"],
+      "@jazu/observability": ["packages/observability/src/index.ts"],
+      "@jazu/observability/*": ["packages/observability/src/*"]
+    }
+  }
+}

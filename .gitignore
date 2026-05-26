@@ -1,0 +1,45 @@
+node_modules
+.next
+dist
+coverage
+.turbo
+
+# Все .env — секреты, кроме *.example (это шаблоны без значений).
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+# WhatsApp Baileys auth-state — содержит креды от ватсапа конкретных юзеров.
+# Никогда не должно попадать в git, даже на dev-машине.
+.wa-auth
+.wa-auth/
+apps/**/.wa-auth
+apps/**/.wa-auth/
+
+# Temp / build artifacts
+apps/api/.tmp
+apps/wa-worker/.tmp
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Sentry/observability
+.sentryclirc
+
+# IDE / OS
+.idea/
+.vscode/
+!.vscode/extensions.json
+
+# Cursor — оставляем .cursor (правила), но не trash
+.cursor/agent-tools/
+.playwright-mcp/
+
+# Локальные бэкапы и заметки
+*.bak
+PRODUCT_RESEARCH.md.bak
+agent-tools/
+
+# pnpm store (если кто-то развернёт локальный)
+.pnpm-store/

@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.7
+# ─── Jazu dev image ───────────────────────────────────────────────────────
+# Один образ для api/web/wa-worker в dev-режиме. Исходники монтируются
+# через volume (см. docker-compose.dev.yml), поэтому в образ их класть
+# не нужно — только тулчейн (Node + pnpm) и общие системные пакеты.
+
+FROM node:22-alpine
+WORKDIR /app
+RUN apk add --no-cache openssl libc6-compat \
+    && corepack enable \
+    && corepack prepare pnpm@11.3.0 --activate
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+ENV CI=1
+# WORKDIR будет перекрыт через `working_dir:` в compose-сервисе.
+CMD ["sh"]

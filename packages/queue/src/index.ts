@@ -1,0 +1,22 @@
+export {
+  getRedisWriter,
+  buildRedisForWorker,
+  closeRedisWriter
+} from "./redis.js";
+
+export {
+  QUEUE_WA_INBOUND,
+  QUEUE_WA_OUTBOUND,
+  getQueue,
+  getInboundQueue,
+  getOutboundQueue,
+  startWorker,
+  closeAllQueues,
+  type WaInboundJob,
+  type WaOutboundJob,
+  type StartedWorker
+} from "./queues.js";
+
+// Re-export BullMQ types для consumer'ов, которые не хотят добавлять
+// bullmq в свои deps (например, wa-worker).
+export type { Job, Worker } from "bullmq";

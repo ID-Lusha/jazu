@@ -1,0 +1,46 @@
+# Caddy v2 reverse proxy для Jazu.
+# Caddy сам получит сертификаты Let's Encrypt при первом обращении.
+# Домены подставляются из env (см. docker-compose.prod.yml).
+
+{
+    email {$ACME_EMAIL}
+    # Раскомментируйте для staging Let's Encrypt (если боитесь rate-limit):
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# ── Web (Next.js) ──────────────────────────────────────────────────────
+{$WEB_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy web:3000 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+# ── API (Fastify) ──────────────────────────────────────────────────────
+{$API_DOMAIN} {
+    encode zstd gzip
+
+    # CORS для веб-приложения. WEB_ORIGIN в API уже разрешает только нужный домен,
+    # но дублируем для preflight OPTIONS, чтобы Caddy не «съел» ответ.
+    @options method OPTIONS
+    handle @options {
+        header Access-Control-Allow-Origin "https://{$WEB_DOMAIN}"
+        header Access-Control-Allow-Credentials "true"
+        header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        header Access-Control-Allow-Headers "Content-Type, Authorization, x-internal-token, x-worker-session"
+        respond 204
+    }
+
+    reverse_proxy api:3001 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # SSE: отключаем буферизацию и поднимаем таймауты.
+        flush_interval -1
+        transport http {
+            response_header_timeout 1h
+            read_timeout 1h
+        }
+    }
+}

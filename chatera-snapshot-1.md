@@ -1,0 +1,98 @@
+- generic [active] [ref=e1]:
+  - main:
+    - generic [ref=e2]:
+      - generic [ref=e3]:
+        - link "Chatera" [ref=e4] [cursor=pointer]:
+          - /url: /dashboard
+          - img "Chatera" [ref=e5]
+        - button "Подключить" [ref=e6]:
+          - img [ref=e7]
+          - text: Подключить
+      - generic [ref=e13]:
+        - generic [ref=e16]:
+          - generic [ref=e19]: оценка ущерба
+          - paragraph [ref=e23]:
+            - text: Это про
+            - strong [ref=e24]: оценку ущерба авто
+            - text: или другой кейс?
+          - generic [ref=e27]: всех возможных ущербов
+          - paragraph [ref=e31]:
+            - text: Для какого объекта делаете оценку —
+            - strong [ref=e32]: авто, недвижимость, после ДТП, после затопления/пожара, спецтехника
+            - text: "?"
+          - generic [ref=e35]: все виды
+          - paragraph [ref=e39]:
+            - text: "Принял: делаете"
+            - strong [ref=e40]: оценку всех видов ущерба
+            - text: . Бот должен доводить человека до чего —
+            - strong [ref=e41]: отправки фото и документов, звонка, или заявки на выезд оценщика
+            - text: "?"
+          - generic [ref=e44]: заявка на выезд
+          - generic [ref=e45]:
+            - button "Обновление · 2145 симв. 2145 симв." [ref=e47] [cursor=pointer]:
+              - img [ref=e49]
+              - generic [ref=e52]:
+                - text: Обновление
+                - generic [ref=e53]: · 2145 симв.
+              - generic [ref=e54]: 2145 симв.
+              - img [ref=e55]
+              - img [ref=e58]
+            - paragraph [ref=e62]:
+              - text: "Собрал основу: бот теперь ведёт к"
+              - strong [ref=e63]: заявке на выезд оценщика
+              - text: ", уточняет тип ущерба, адрес и срочность. Что добавить следующим —"
+              - strong [ref=e64]: цены/сроки
+              - text: или сразу тестим?
+          - generic [ref=e67]: что еще можно добавить?
+          - generic [ref=e70]:
+            - paragraph [ref=e71]: "Три полезных блока:"
+            - list [ref=e72]:
+              - listitem [ref=e73]:
+                - strong [ref=e74]: География
+                - text: — в каких городах/районах выезжаете
+              - listitem [ref=e75]:
+                - strong [ref=e76]: Сроки
+                - text: — как быстро возможен выезд и когда готово заключение
+              - listitem [ref=e77]:
+                - strong [ref=e78]: Частые входы
+                - text: — ДТП, затопление, пожар, спор со страховой, повреждение квартиры/дома, спецтехника
+            - paragraph [ref=e79]:
+              - text: Ещё усилил бы поведение на вопрос
+              - strong [ref=e80]: «сколько стоит?»
+              - text: — чтобы не обрывал, а объяснял от чего зависит и вёл к заявке. Если хочешь, добавлю это сразу.
+          - generic [ref=e83]: давай
+          - generic [ref=e84]:
+            - button "Правки · 2" [ref=e86] [cursor=pointer]:
+              - img [ref=e88]
+              - generic [ref=e91]:
+                - text: Правки
+                - generic [ref=e92]: · 2
+              - img [ref=e93]
+              - img [ref=e96]
+            - paragraph [ref=e100]:
+              - text: "Добавил три вещи: бот теперь"
+              - strong [ref=e101]: нормально отрабатывает вопрос про цену
+              - text: ", аккуратно отвечает про"
+              - strong [ref=e102]: сроки
+              - text: ", и не теряется на вопросе"
+              - strong [ref=e103]: «выезжаете в мой город?»
+              - text: . Если хочешь, следующим ходом могу добавить готовые формулировки под входы
+              - strong [ref=e104]: ДТП / затопление / пожар
+              - text: .
+        - generic [ref=e107]:
+          - textbox "Опишите бизнес или поправьте бота…" [ref=e108]
+          - generic [ref=e109]:
+            - generic [ref=e110]:
+              - button "Настройка" [ref=e111]:
+                - img [ref=e112]
+                - text: Настройка
+              - button "Тест" [ref=e114]:
+                - img [ref=e115]
+                - text: Тест
+            - generic [ref=e117]:
+              - button "Диктовать голосом" [ref=e118]:
+                - img [ref=e119]
+              - button "Отправить" [disabled] [ref=e121]:
+                - img [ref=e122]
+        - region "Notifications alt+T"
+  - alert [ref=e12]

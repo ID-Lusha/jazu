@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jazu
+      POSTGRES_PASSWORD: jazu
+      POSTGRES_DB: jazu
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jazu -d jazu"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  wa-worker:
+    build:
+      context: .
+      dockerfile: apps/wa-worker/Dockerfile
+    restart: unless-stopped
+    profiles: ["full"]
+    environment:
+      NODE_ENV: production
+      PORT: "4001"
+      # В docker-compose API ходит как сервис api:3001. Если API запущен
+      # на хосте (типичный dev-флоу), используйте host.docker.internal.
+      API_ORIGIN: ${WA_WORKER_API_ORIGIN:-http://host.docker.internal:3001}
+      API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:-jazu-internal-token}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      WA_OUTBOUND_CONCURRENCY: ${WA_OUTBOUND_CONCURRENCY:-8}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      RELEASE_VERSION: ${RELEASE_VERSION:-}
+    ports:
+      - "4001:4001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4001/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  pgdata:
+  redisdata:

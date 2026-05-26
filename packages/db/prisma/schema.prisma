@@ -1,0 +1,333 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String      @id @default(cuid())
+  email           String      @unique
+  name            String?
+  phone           String?     @unique
+  phoneVerifiedAt DateTime?
+  googleId        String?     @unique
+  avatarUrl       String?
+  telegramChatId  String?
+  onboardingState Json?
+  // Биллинг. quotaTotal — всего куплено (включая free trial 35).
+  // quotaUsed — сколько уникальных клиентов-в-месяц учтено за всё время
+  // (живёт без сброса, потому что каждая monthly-active единица = 1 списание).
+  // При исчерпании quotaUsed >= quotaTotal бот перестаёт отвечать (block_all).
+  quotaTotal      Int         @default(35)
+  quotaUsed       Int         @default(0)
+  // Дневной лимит токенов LLM (sum input+output) — защита от взрыва счёта
+  // на OpenAI. По умолчанию 50_000 для free trial (~10-15 диалогов в день).
+  // У платных пользователей увеличивается в момент покупки пакета.
+  dailyTokenLimit Int         @default(50000)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  sessions        Session[]
+  agents          Agent[]
+  usageEvents     UsageEvent[]
+  purchases       Purchase[]
+  llmCallLogs     LlmCallLog[]
+}
+
+// Лог каждого вызова OpenAI: модель, токены, стоимость, latency, статус.
+// Источник истины для:
+//   - per-user daily budget (sumTokens за UTC-день);
+//   - админ-дашборда «кто ест деньги»;
+//   - алертов при аномалиях.
+// Хранится бессрочно (можно архивировать через 90 дней при росте объёма).
+model LlmCallLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  agentId         String?
+  route           String   // "builder" | "runtime" | "correction" | "wa-inbound"
+  model           String
+  inputTokens     Int      @default(0)
+  outputTokens   Int      @default(0)
+  totalTokens     Int      @default(0)
+  // USD * 1_000_000 (микро-доллары) — чтобы хранить целым числом без float-погрешностей.
+  // Пример: $0.0025 = 2500.
+  costMicroUsd    Int      @default(0)
+  latencyMs       Int      @default(0)
+  status          String   // "ok" | "error" | "timeout" | "budget_blocked"
+  errorCode       String?
+  createdAt       DateTime @default(now())
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([agentId, createdAt])
+  @@index([createdAt])
+}
+
+// Один UsageEvent = одна (userId, chatId, periodKey) тройка.
+// periodKey формата "YYYY-MM" (UTC) — раз в месяц уникальность chatId
+// сбрасывается, и тот же клиент снова стоит 1 диалог.
+model UsageEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  chatId     String
+  periodKey  String
+  agentId    String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId, periodKey])
+  @@index([userId, periodKey])
+}
+
+// История покупок пакетов диалогов. Пока stub-оплата — статус сразу "paid".
+model Purchase {
+  id           String   @id @default(cuid())
+  userId       String
+  packageId    String   // "free" | "basic" | "pro" | "max" | "custom"
+  conversations Int
+  pricePerOne  Int      // \u20b8 за 1 диалог (на момент покупки, для прозрачности)
+  amount       Int      // итоговая сумма в тенге
+  currency     String   @default("KZT")
+  status       String   @default("paid") // "pending" | "paid" | "refunded"
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Session {
+  id             String   @id @default(cuid())
+  cookieId       String   @unique
+  userId         String?
+  agentId        String?
+  readyToFinalize Boolean @default(false)
+  isGenerating   Boolean  @default(false)
+  promptDraft    String   @default("")
+  testBotStage   String   @default("")
+  createAgentHistory Json
+  promptBuilderHistory Json
+  testBotHistory  Json
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  lastSeenAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  agent          Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([agentId])
+}
+
+model MagicLinkToken {
+  id            String    @id @default(cuid())
+  token         String    @unique
+  email         String
+  phoneSnapshot String?
+  nonce         String    @unique
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([email, expiresAt])
+}
+
+model Agent {
+  id              String           @id @default(cuid())
+  userId          String?
+  name            String
+  status          AgentStatus      @default(draft)
+  currentPrompt   String           @default("")
+  readyToFinalize Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessions        Session[]
+  businessProfile BusinessProfile?
+  promptVersions  PromptVersion[]
+  builderMessages  BuilderMessage[]
+  testMessages     TestMessage[]
+  waConnections    WaConnection[]
+  conversations    Conversation[]
+
+  @@index([userId])
+}
+
+model BusinessProfile {
+  id              String   @id @default(cuid())
+  agentId         String   @unique
+  data            Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model PromptVersion {
+  id              String      @id @default(cuid())
+  agentId         String
+  content         String
+  charCount       Int
+  source          PromptSource @default(create)
+  createdBy       PromptCreator @default(ai)
+  parentId        String?
+  metadata        Json
+  createdAt       DateTime    @default(now())
+  agent           Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  parent          PromptVersion? @relation("PromptVersionChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children        PromptVersion[] @relation("PromptVersionChildren")
+
+  @@index([agentId, createdAt])
+}
+
+model BuilderMessage {
+  id              String    @id @default(cuid())
+  agentId         String
+  role            String
+  content         String
+  parts           Json
+  createdAt       DateTime  @default(now())
+  agent           Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+}
+
+model TestMessage {
+  id              String    @id @default(cuid())
+  agentId         String
+  role            String
+  content         String
+  parts           Json
+  createdAt       DateTime  @default(now())
+  agent           Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+}
+
+model WaConnection {
+  id                  String        @id @default(cuid())
+  agentId             String        @unique
+  phone               String?
+  status              WaStatus      @default(disconnected)
+  authState           Json
+  authStateUpdatedAt  DateTime?
+  qrText              String?
+  qrDataUrl           String?
+  workerSessionId     String?
+  lastSeenAt          DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  agent               Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+}
+
+model Conversation {
+  id              String       @id @default(cuid())
+  agentId         String
+  waChatId        String
+  customerName    String?
+  status          ConversationStatus @default(open)
+  lastMessageAt   DateTime?    @default(now())
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  agent           Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  messages        WaMessage[]
+  leads           Lead[]
+
+  @@unique([agentId, waChatId])
+  @@index([agentId, lastMessageAt])
+}
+
+model WaMessage {
+  id              String    @id @default(cuid())
+  conversationId  String
+  direction       MessageDirection
+  body            String
+  waMsgId         String?
+  parts           Json
+  createdAt       DateTime  @default(now())
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, waMsgId])
+  @@index([conversationId, createdAt])
+}
+
+model Lead {
+  id              String    @id @default(cuid())
+  conversationId  String
+  summary         String
+  niche           String?
+  fields          Json
+  status          LeadStatus @default(new)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+enum AgentStatus {
+  draft
+  active
+  archived
+}
+
+enum PromptSource {
+  create
+  edit
+  correction
+}
+
+enum PromptCreator {
+  ai
+  user
+}
+
+enum WaStatus {
+  disconnected
+  qr
+  pairing
+  connected
+  error
+}
+
+enum ConversationStatus {
+  open
+  closed
+  archived
+}
+
+enum MessageDirection {
+  in
+  out
+}
+
+enum LeadStatus {
+  new
+  seen
+  done
+}
+
+// Аудит-лог чувствительных действий: логин, выдача/использование magic-link,
+// привязка/отвязка WhatsApp, покупка пакета. Используется для:
+//   - compliance / разбор инцидентов («когда юзер вошёл с другого IP?»);
+//   - алертов по подозрительным паттернам (10 неудачных логинов за минуту);
+//   - доказательной базы для биллинговых споров.
+// Хранится бессрочно (retention для AuditLog не настраиваем — он маленький).
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  event     String   // "login.success" | "login.failed" | "magic_link.issued" | "wa.paired" | ...
+  ip        String?
+  userAgent String?
+  requestId String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([event, createdAt])
+  @@index([createdAt])
+}

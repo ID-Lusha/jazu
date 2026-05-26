@@ -1,0 +1,78 @@
+name: CI
+
+# Запускаем на каждый push в main и на каждый PR. Это база quality gates Sprint 4:
+# три параллельных job'а (lint, typecheck, test) держим зелёными — без них в main
+# ничего не вливаем (защиту ветки настраиваешь в GitHub Settings → Branches).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Если в PR прилетел новый коммит — отменяем предыдущий run этого же PR.
+# Экономит минуты Actions и не даёт зелёному баджу опередить устаревший код.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  # Включаем corepack автоматически — Node 22 поставляется с pnpm shim'ом.
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+jobs:
+  # Общий setup-шаг (install + prisma generate) дублировать в каждом job'е —
+  # быстро (с кешем pnpm), и зато job'ы независимы: упал lint — typecheck и
+  # test всё равно отработают и покажут полную картину.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        # Без этого @jazu/db не имеет типов и lint валится в каскад.
+        run: pnpm db:generate
+      - name: Lint
+        run: pnpm -r lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm db:generate
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm db:generate
+      - name: Test
+        run: pnpm test

@@ -1,0 +1,189 @@
+# Прод-overlay поверх docker-compose.yml.
+# Запуск на сервере:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Базовый docker-compose.yml поднимает только postgres + redis (и опционально
+# wa-worker через профиль "full" — игнорируется здесь). Этот файл добавляет
+# api, web, и собственный wa-worker (production-режим, не dev), плюс caddy
+# для https и реверс-прокси.
+
+services:
+  # ── Postgres: переопределяем пароль на боевой и убираем экспонирование наружу.
+  postgres:
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jazu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-jazu}
+    # В проде не пробрасываем 5432 на хост — Postgres доступен только
+    # сервисам в той же docker network. Раскомментируйте, если нужен внешний доступ.
+    ports: !reset []
+
+  # ── Redis: убираем порт наружу.
+  redis:
+    ports: !reset []
+
+  # ── API ────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: ${JAZU_API_IMAGE:-jazu-api:latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jazu}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jazu}
+      REDIS_URL: redis://redis:6379
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      API_ORIGIN: ${API_ORIGIN}
+      WA_WORKER_URL: http://wa-worker:4001
+      API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:?API_INTERNAL_TOKEN is required}
+      MAGIC_LINK_SECRET: ${MAGIC_LINK_SECRET:?MAGIC_LINK_SECRET is required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
+      FROM_EMAIL: ${FROM_EMAIL:?FROM_EMAIL is required}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      RELEASE_VERSION: ${RELEASE_VERSION:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "3001"
+    stop_grace_period: 35s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/readyz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Web ────────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_* зашиваются на этапе билда. Если меняете домен —
+        # пересоберите образ.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    image: ${JAZU_WEB_IMAGE:-jazu-web:latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  # ── WhatsApp worker ────────────────────────────────────────────────────
+  # Переопределяем worker из базового compose: убираем профиль "full",
+  # подключаем к сети api по имени сервиса, без пробрасывания на хост.
+  wa-worker:
+    build:
+      context: .
+      dockerfile: apps/wa-worker/Dockerfile
+    image: ${JAZU_WA_WORKER_IMAGE:-jazu-wa-worker:latest}
+    restart: unless-stopped
+    profiles: !reset []
+    environment:
+      NODE_ENV: production
+      PORT: "4001"
+      API_ORIGIN: http://api:3001
+      API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:?API_INTERNAL_TOKEN is required}
+      REDIS_URL: redis://redis:6379
+      WA_OUTBOUND_CONCURRENCY: ${WA_OUTBOUND_CONCURRENCY:-8}
+      WA_PER_CHAT_MIN_INTERVAL_MS: ${WA_PER_CHAT_MIN_INTERVAL_MS:-1200}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      RELEASE_VERSION: ${RELEASE_VERSION:-}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "4001"
+    ports: !reset []
+    extra_hosts: !reset []
+    # Прод-graceful shutdown даём 35 секунд: 30 на graceful + 5 на zombie kill.
+    stop_grace_period: 35s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4001/readyz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Jobs worker (BullMQ consumer) ──────────────────────────────────────
+  # Запускайте несколько контейнеров (deploy.replicas) для горизонтального
+  # скейла обработки LLM-вызовов. У сервиса нет HTTP — нет healthcheck'а
+  # на endpoint; Docker рестартует по exit-code.
+  jobs:
+    build:
+      context: .
+      dockerfile: apps/jobs/Dockerfile
+    image: ${JAZU_JOBS_IMAGE:-jazu-jobs:latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jazu}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jazu}
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      JOBS_CONCURRENCY: ${JOBS_CONCURRENCY:-10}
+      JOBS_HEALTH_PORT: "4002"
+      RETENTION_DAYS: ${RETENTION_DAYS:-90}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      RELEASE_VERSION: ${RELEASE_VERSION:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    expose:
+      - "4002"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4002/readyz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    stop_grace_period: 35s
+
+  # ── Caddy: https + reverse proxy ───────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:?WEB_DOMAIN is required (e.g. app.jazu.io)}
+      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN is required (e.g. api.jazu.io)}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required for Let's Encrypt}
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,230 @@
+# Dev-overlay поверх docker-compose.yml.
+# Запуск:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Либо удобнее: pnpm docker:dev:up
+#
+# Что это даёт:
+#   - api/web/wa-worker запускаются в контейнерах с hot-reload (tsx watch / next dev);
+#   - исходники монтируются с хоста (изменения подхватываются мгновенно);
+#   - node_modules — отдельный anonymous volume, чтобы не затирать ими хостовые;
+#   - порты пробрасываются наружу для прямого доступа из браузера.
+#
+# В отличие от docker-compose.prod.yml:
+#   - нет caddy/https (фронт открывается напрямую на :3000);
+#   - в качестве образа используется Dockerfile.dev (минимальный, без билда);
+#   - все секреты подтягиваются из .env корня репо.
+
+services:
+  # ── Postgres: оставляем порт наружу для удобных подключений из Prisma Studio / DBeaver.
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  # ── Install (run-once): ставит node_modules в named volume'ы, общие со всеми
+  # остальными сервисами. Без этого первый запуск упадёт — pnpm install
+  # внутри контейнера нужен потому, что нативные модули (prisma engine,
+  # esbuild) собираются под linux/amd64 или linux/arm64, а у разработчиков
+  # на Mac хостовые node_modules скомпилированы под darwin.
+  install:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: jazu-dev:latest
+    working_dir: /app
+    command: sh -c "pnpm install --frozen-lockfile && cd packages/db && pnpm exec prisma generate"
+    volumes:
+      - ./:/app
+      - dev_root_modules:/app/node_modules
+      - dev_api_modules:/app/apps/api/node_modules
+      - dev_web_modules:/app/apps/web/node_modules
+      - dev_worker_modules:/app/apps/wa-worker/node_modules
+      - dev_jobs_modules:/app/apps/jobs/node_modules
+      - dev_db_modules:/app/packages/db/node_modules
+      - dev_ai_modules:/app/packages/ai/node_modules
+      - dev_shared_modules:/app/packages/shared/node_modules
+      - dev_queue_modules:/app/packages/queue/node_modules
+      - dev_pipeline_modules:/app/packages/wa-pipeline/node_modules
+      - dev_observability_modules:/app/packages/observability/node_modules
+      - dev_next_cache:/app/apps/web/.next
+    restart: "no"
+
+  # ── API ────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: jazu-dev:latest
+    restart: unless-stopped
+    working_dir: /app/apps/api
+    command: sh -c "cd /app/packages/db && pnpm exec prisma migrate deploy && cd /app/apps/api && pnpm dev"
+    env_file:
+      - .env
+    environment:
+      # Перекрываем connection-strings, чтобы они смотрели на сервисы в docker network,
+      # а не на localhost (последний внутри контейнера — это сам контейнер).
+      DATABASE_URL: postgresql://jazu:jazu@postgres:5432/jazu
+      REDIS_URL: redis://redis:6379
+      WA_WORKER_URL: http://wa-worker:4001
+      # Origins оставляем "из браузера" — фронт всё ещё открывается на :3000 на хосте.
+      WEB_ORIGIN: http://localhost:3000
+      API_ORIGIN: http://localhost:3001
+      NODE_ENV: development
+      PORT: "3001"
+    volumes:
+      - ./:/app
+      - dev_root_modules:/app/node_modules
+      - dev_api_modules:/app/apps/api/node_modules
+      - dev_web_modules:/app/apps/web/node_modules
+      - dev_worker_modules:/app/apps/wa-worker/node_modules
+      - dev_jobs_modules:/app/apps/jobs/node_modules
+      - dev_db_modules:/app/packages/db/node_modules
+      - dev_ai_modules:/app/packages/ai/node_modules
+      - dev_shared_modules:/app/packages/shared/node_modules
+      - dev_queue_modules:/app/packages/queue/node_modules
+      - dev_pipeline_modules:/app/packages/wa-pipeline/node_modules
+      - dev_observability_modules:/app/packages/observability/node_modules
+    ports:
+      - "3001:3001"
+    # GlitchTip живёт на хосте (отдельный compose-файл), достаём через
+    # host.docker.internal. Если SENTRY_DSN не задан — extra_hosts не мешает.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      install:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Web ────────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: jazu-dev:latest
+    restart: unless-stopped
+    working_dir: /app/apps/web
+    command: pnpm dev
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      # NEXT_PUBLIC_* читается в браузере, поэтому ссылается на :3001 на хосте,
+      # а не на api-сервис внутри docker network.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001/api
+    volumes:
+      - ./:/app
+      - dev_root_modules:/app/node_modules
+      - dev_web_modules:/app/apps/web/node_modules
+      - dev_next_cache:/app/apps/web/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      install:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+
+  # ── WhatsApp worker ────────────────────────────────────────────────────
+  wa-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: jazu-dev:latest
+    restart: unless-stopped
+    working_dir: /app/apps/wa-worker
+    command: pnpm dev
+    # Базовый docker-compose.yml включает wa-worker под профилем "full".
+    # Здесь снимаем профиль — в dev он поднимается вместе со всем остальным.
+    profiles: !reset []
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: "4001"
+      # В dev API ходит как сервис в docker network (а не через host.docker.internal).
+      API_ORIGIN: http://api:3001
+      # Включаем BullMQ-pipeline — без этого fallback на медленный sync HTTP.
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./:/app
+      - dev_root_modules:/app/node_modules
+      - dev_worker_modules:/app/apps/wa-worker/node_modules
+      - dev_queue_modules:/app/packages/queue/node_modules
+      - dev_observability_modules:/app/packages/observability/node_modules
+    ports:
+      - "4001:4001"
+    # Нужен host.docker.internal для отправки в GlitchTip (на хосте, не в network).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      install:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  # ── Jobs worker (BullMQ consumer для wa:inbound) ───────────────────────
+  # Отдельный процесс, который вытаскивает inbound из Redis, прогоняет через
+  # LLM и кладёт reply в wa:outbound. Не имеет HTTP-эндпойнтов — масштабируется
+  # просто запуском ещё одного контейнера с тем же кодом.
+  jobs:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: jazu-dev:latest
+    restart: unless-stopped
+    working_dir: /app/apps/jobs
+    command: pnpm dev
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://jazu:jazu@postgres:5432/jazu
+      REDIS_URL: redis://redis:6379
+      JOBS_CONCURRENCY: "10"
+    volumes:
+      - ./:/app
+      - dev_root_modules:/app/node_modules
+      - dev_jobs_modules:/app/apps/jobs/node_modules
+      - dev_queue_modules:/app/packages/queue/node_modules
+      - dev_pipeline_modules:/app/packages/wa-pipeline/node_modules
+      - dev_ai_modules:/app/packages/ai/node_modules
+      - dev_db_modules:/app/packages/db/node_modules
+      - dev_shared_modules:/app/packages/shared/node_modules
+      - dev_observability_modules:/app/packages/observability/node_modules
+    ports:
+      - "4002:4002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      install:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+volumes:
+  dev_root_modules:
+  dev_api_modules:
+  dev_web_modules:
+  dev_worker_modules:
+  dev_jobs_modules:
+  dev_db_modules:
+  dev_ai_modules:
+  dev_shared_modules:
+  dev_queue_modules:
+  dev_pipeline_modules:
+  dev_observability_modules:
+  dev_next_cache:

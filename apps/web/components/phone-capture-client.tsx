@@ -1,0 +1,137 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Phone } from "lucide-react";
+import { apiJson } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
+
+const PHONE_HINT = "Например: +7 701 123 45 67";
+
+function formatPhoneInput(raw: string): string {
+  const digits = raw.replace(/\D+/g, "").slice(0, 11);
+  if (!digits) return "";
+  const tail = digits.startsWith("7") || digits.startsWith("8") ? digits.slice(1) : digits;
+  const padded = tail.padEnd(10, " ");
+  const parts = [padded.slice(0, 3), padded.slice(3, 6), padded.slice(6, 8), padded.slice(8, 10)]
+    .map((p) => p.replace(/\s+$/g, ""))
+    .filter((p) => p.length > 0);
+  return `+7 ${parts.join(" ")}`.trimEnd();
+}
+
+export default function PhoneCaptureClient() {
+  const router = useRouter();
+  const [phone, setPhone] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  // Если юзер уже залогинен и у него уже есть phone — сразу в dashboard.
+  // Если не залогинен — на /auth (логин).
+  useEffect(() => {
+    let cancelled = false;
+    void apiJson<{ success: boolean; needsPhone?: boolean }>("/auth/me", { method: "GET" })
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.success) {
+          router.replace("/auth");
+          return;
+        }
+        if (res.needsPhone === false) {
+          router.replace("/dashboard");
+          return;
+        }
+        setChecking(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        router.replace("/auth");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  async function submit() {
+    if (!phone.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiJson<{ ok: boolean; error?: string }>("/auth/phone", {
+        method: "POST",
+        body: JSON.stringify({ phone: phone.trim() })
+      });
+      if (!res.ok) {
+        setError(res.error ?? "Не удалось сохранить номер");
+        return;
+      }
+      router.replace("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить номер");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (checking) {
+    return (
+      <div className="rounded-2xl border border-border bg-card px-6 py-5 text-sm text-muted-foreground">
+        Проверяем сессию…
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-sm">
+      <div className="rounded-xl border border-border bg-card px-6 py-8">
+        <div className="mb-5 text-center">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-foreground">
+            <Phone className="h-5 w-5 text-background" />
+          </div>
+          <h1 className="text-lg font-semibold">Добавьте номер WhatsApp</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            На этот номер будут приходить уведомления и подключение к WhatsApp.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="phone" className="block text-sm font-medium text-foreground">
+              Номер WhatsApp
+            </label>
+            <input
+              id="phone"
+              type="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+              onKeyDown={(e) => e.key === "Enter" && void submit()}
+              placeholder={PHONE_HINT}
+              className={cn(
+                "mt-1.5 w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground",
+                "focus:border-foreground focus:ring-1 focus:ring-foreground/10"
+              )}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">Формат +7XXXXXXXXXX (Казахстан / Россия)</p>
+          </div>
+
+          <Button
+            className="w-full"
+            onClick={() => void submit()}
+            disabled={busy || !phone.trim()}
+          >
+            {busy ? "Сохраняем…" : "Сохранить"}
+            {!busy && <ArrowRight className="h-4 w-4" />}
+          </Button>
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
