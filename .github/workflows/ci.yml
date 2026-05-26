@@ -19,22 +19,27 @@ concurrency:
 env:
   NODE_VERSION: "22"
   # Включаем corepack автоматически — Node 22 поставляется с pnpm shim'ом.
+  # Отключаем prompt подтверждения (`corepack enable` спрашивает в TTY).
   COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
 
 jobs:
   # Общий setup-шаг (install + prisma generate) дублировать в каждом job'е —
   # быстро (с кешем pnpm), и зато job'ы независимы: упал lint — typecheck и
   # test всё равно отработают и покажут полную картину.
+  #
+  # pnpm устанавливаем через `corepack` (встроен в Node 22) вместо
+  # pnpm/action-setup@v4. Так мы не зависим от внешнего action'а, который
+  # эпизодически бывает недоступен (codeload.github.com отдаёт 5xx).
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+      - name: Enable pnpm via corepack
+        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Generate Prisma client
@@ -48,11 +53,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+      - name: Enable pnpm via corepack
+        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Generate Prisma client
@@ -65,11 +70,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+      - name: Enable pnpm via corepack
+        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Generate Prisma client
